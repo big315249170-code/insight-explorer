@@ -22,7 +22,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useCallback } = React;
-
+ 
 const DIMS = [
   { id:"human",   label:"人性洞察", color:"#c8a96e", desc:"人最深处的欲望、恐惧与矛盾" },
   { id:"emotion", label:"情感触点", color:"#7c6ee0", desc:"什么时刻会让人产生共鸣" },
@@ -31,108 +31,109 @@ const DIMS = [
   { id:"paradox", label:"反常识",   color:"#e07ab0", desc:"最违反直觉的角度往往最有洞察" },
   { id:"timing",  label:"时机洞察", color:"#a8e063", desc:"为什么这个时代这个词开始重要" },
 ];
-
+ 
 function getColor(id){ return DIMS.find(d=>d.id===id)?.color||"#c8a96e"; }
 function Dots(){ return <span style={{display:"inline-flex",gap:4,alignItems:"center"}}><span className="dot"/><span className="dot"/><span className="dot"/></span>; }
-
-async function callGemini(prompt, apiKey){
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        contents:[{parts:[{text:prompt}]}],
-        generationConfig:{temperature:0.9,maxOutputTokens:1500}
-      })
-    }
-  );
+ 
+async function call302(prompt, apiKey){
+  const res = await fetch("https://api.302.ai/v1/chat/completions", {
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":"Bearer "+apiKey
+    },
+    body:JSON.stringify({
+      model:"gpt-4o-mini",
+      max_tokens:1500,
+      messages:[{role:"user", content:prompt}]
+    })
+  });
   const data = await res.json();
   if(data.error) throw new Error(data.error.message);
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return data.choices?.[0]?.message?.content || "";
 }
-
+ 
 function App(){
-  const [apiKey, setApiKey]   = useState("");
+  const [apiKey, setApiKey]     = useState("");
   const [apiSaved, setApiSaved] = useState(false);
-  const [input, setInput]     = useState("");
-  const [activeDims, setActDims] = useState(["human","emotion","culture","paradox"]);
-  const [nodes, setNodes]     = useState([]);
-  const [chain, setChain]     = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [synthesis, setSynth] = useState("");
-  const [nodeErr, setNodeErr] = useState("");
-  const [synErr, setSynErr]   = useState("");
-  const [depth, setDepth]     = useState(0);
-  const [hovered, setHovered] = useState(null);
-
+  const [input, setInput]       = useState("");
+  const [activeDims, setActDims]= useState(["human","emotion","culture","paradox"]);
+  const [nodes, setNodes]       = useState([]);
+  const [chain, setChain]       = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [syncing, setSyncing]   = useState(false);
+  const [synthesis, setSynth]   = useState("");
+  const [nodeErr, setNodeErr]   = useState("");
+  const [synErr, setSynErr]     = useState("");
+  const [depth, setDepth]       = useState(0);
+  const [hovered, setHovered]   = useState(null);
+ 
   const toggleDim = id => setActDims(prev =>
     prev.includes(id) ? (prev.length>2 ? prev.filter(d=>d!==id) : prev) : [...prev,id]
   );
-
+ 
   const explore = useCallback(async (custom)=>{
     const topic = custom||input.trim();
     if(!topic||!apiSaved) return;
     setLoading(true); setNodeErr(""); setNodes([]);
     setDepth(d => custom ? Math.min(d+1,5) : 1);
-
+ 
     const selDims = DIMS.filter(d=>activeDims.includes(d.id));
     const dimStr = selDims.map(d=>`${d.label}（${d.desc}）`).join("、");
     const chainCtx = chain.length>0 ? `已有洞察链路：${chain.map(c=>c.title).join(" → ")}。请在此基础上深化。\n` : "";
-
+ 
     const prompt = `你是顶级洞察力引擎，专注广告营销、品牌、商业与人性的深度洞察。
-
+ 
 洞察起点：「${topic}」
 ${chainCtx}
 从以下${selDims.length}个维度各生成2个洞察节点，共${selDims.length*2}个：
 ${dimStr}
-
+ 
 要求：
 1. 真实有深度，揭示别人没注意到的规律或矛盾
-2. 不能是表面联想，要有洞察力
+2. 不能是表面联想，要有真正的洞察力
 3. 语言精炼有力，让人觉得"说中了"
-
-严格输出JSON数组，不要有任何其他文字、代码块标记：
+ 
+严格输出JSON数组，不要有任何其他文字和代码块标记：
 [{"dim":"维度名","dimId":"human或emotion或culture或market或paradox或timing","title":"节点标题8字内","body":"洞察内容40字内"}]`;
-
+ 
     try{
-      const text = await callGemini(prompt, apiKey);
+      const text = await call302(prompt, apiKey);
       const clean = text.replace(/```json|```/g,"").trim();
       setNodes(JSON.parse(clean));
     }catch(e){ setNodeErr("生成失败："+e.message); }
     setLoading(false);
   },[input,activeDims,chain,apiKey,apiSaved]);
-
+ 
   const addToChain = node => {
     if(chain.find(c=>c.title===node.title)) return;
     setChain(p=>[...p,node]); setSynth(""); setSynErr("");
   };
-
+ 
   const synthesize = async ()=>{
     if(chain.length<2||!apiSaved) return;
     setSyncing(true); setSynErr(""); setSynth("");
     const desc = chain.map(c=>`【${c.dim}】${c.title}：${c.body}`).join("\n");
     const prompt = `你是顶级洞察力引擎，辅助广告创意、品牌策略、商业决策。
-
+ 
 用户选择了以下洞察节点：
 ${desc}
-
+ 
 将这些节点合成1个深度洞察：
 1. 找到节点之间隐藏的内在联系
 2. 得出更高层次的洞察（化学反应，不是简单叠加）
 3. 可直接指导创意方案、品牌策略或内容方向
 4. 语言精炼有力，像一句能"刺穿"人心的话
 5. 最后给出2-3个具体应用方向
-
+ 
 直接输出，无需任何格式前缀。`;
     try{
-      const text = await callGemini(prompt, apiKey);
+      const text = await call302(prompt, apiKey);
       setSynth(text);
     }catch(e){ setSynErr("合成失败："+e.message); }
     setSyncing(false);
   };
-
+ 
   const S = {
     wrap:{position:"relative",zIndex:1,maxWidth:960,margin:"0 auto",padding:"40px 24px"},
     card:{background:"#111118",border:"1px solid #2a2a3a",borderRadius:16,padding:24,marginBottom:24},
@@ -157,47 +158,44 @@ ${desc}
     secLabel:{fontFamily:"monospace",fontSize:10,letterSpacing:3,color:"#4a4a6a",textTransform:"uppercase",marginBottom:16},
     loading:{display:"flex",alignItems:"center",justifyContent:"center",gap:12,padding:48,color:"#7a7a9a",fontSize:14,gridColumn:"1/-1"},
   };
-
+ 
   return (
     <div style={S.wrap}>
-      {/* 标题 */}
       <div style={{textAlign:"center",marginBottom:48}}>
         <div style={{fontFamily:"monospace",fontSize:11,letterSpacing:4,color:"#c8a96e",textTransform:"uppercase",marginBottom:12}}>Insight Explorer · 洞察力引擎</div>
         <div style={{fontSize:42,fontWeight:300,letterSpacing:8,color:"#c8a96e",marginBottom:8}}>洞 察</div>
         <div style={{color:"#7a7a9a",fontSize:14}}>输入一个词、一种感受、或一个模糊的方向 — AI 沿着洞察维度为你展开</div>
       </div>
-
-      {/* API Key */}
+ 
       {!apiSaved ? (
         <div style={S.card}>
-          <span style={S.label}>第一步：输入你的 Gemini API Key</span>
+          <span style={S.label}>输入你的 302.ai API Key</span>
           <div style={S.inputRow}>
             <input
               style={{...S.inp,fontFamily:"monospace",fontSize:13}}
               type="password"
-              placeholder="AIza..."
+              placeholder="sk-..."
               value={apiKey}
               onChange={e=>setApiKey(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&apiKey.length>10&&setApiSaved(true)}
+              onKeyDown={e=>e.key==="Enter"&&apiKey.startsWith("sk-")&&setApiSaved(true)}
             />
             <button
-              style={S.btn("#c8a96e","#0a0a0f",apiKey.length<10)}
+              style={S.btn("#c8a96e","#0a0a0f",!apiKey.startsWith("sk-"))}
               onClick={()=>setApiSaved(true)}
-              disabled={apiKey.length<10}
+              disabled={!apiKey.startsWith("sk-")}
             >确认 →</button>
           </div>
           <div style={{marginTop:10,fontSize:12,color:"#4a4a6a"}}>
-            免费获取：aistudio.google.com → Get API Key　　Key 仅存于本页内存，不会上传任何服务器
+            Key 仅保存在本页内存中，关闭页面即消失，不会上传任何服务器
           </div>
         </div>
       ) : (
         <div style={{...S.card,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 20px",marginBottom:24}}>
-          <span style={{fontSize:13,color:"#4ecdc4"}}>✓ Gemini API 已连接</span>
+          <span style={{fontSize:13,color:"#4ecdc4"}}>✓ 302.ai API 已连接</span>
           <button style={{...S.btn("transparent","#7a7a9a",false),border:"1px solid #2a2a3a",padding:"6px 14px",fontSize:11}} onClick={()=>{setApiSaved(false);setApiKey("");}}>重置</button>
         </div>
       )}
-
-      {/* 输入区 */}
+ 
       <div style={S.card}>
         <span style={S.label}>输入洞察起点</span>
         <div style={S.inputRow}>
@@ -220,8 +218,7 @@ ${desc}
           ))}
         </div>
       </div>
-
-      {/* 深度 */}
+ 
       {depth>0&&(
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:24}}>
           <span style={{fontFamily:"monospace",fontSize:10,color:"#4a4a6a",letterSpacing:2}}>DEPTH</span>
@@ -230,8 +227,7 @@ ${desc}
           ))}
         </div>
       )}
-
-      {/* 节点 */}
+ 
       {(loading||nodes.length>0||nodeErr)&&(
         <div style={{marginBottom:32}}>
           <div style={S.secLabel}>洞察节点 — 点击加入链路</div>
@@ -254,8 +250,7 @@ ${desc}
           </div>
         </div>
       )}
-
-      {/* 链路 */}
+ 
       <div style={S.card}>
         <div style={S.secLabel}>已选链路 — 你的洞察组合</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16,minHeight:40}}>
@@ -271,19 +266,15 @@ ${desc}
           }
         </div>
         <div style={S.actions}>
-          <button
-            style={S.btn("#7c6ee0","white",syncing||chain.length<2)}
-            onClick={synthesize}
-            disabled={syncing||chain.length<2}
-          >{syncing?"合成中...":"✦ 合成洞察"}</button>
-          <button
-            style={{...S.btn("transparent","#7a7a9a",false),border:"1px solid #2a2a3a"}}
-            onClick={()=>chain.length>0&&explore(chain.map(c=>c.title).join(" + "))}
-          >↓ 顺着链路继续深挖</button>
-          <button
-            style={{...S.btn("transparent","#7a7a9a",false),border:"1px solid #2a2a3a"}}
-            onClick={()=>{setChain([]);setSynth("");setSynErr("");}}
-          >清空链路</button>
+          <button style={S.btn("#7c6ee0","white",syncing||chain.length<2)} onClick={synthesize} disabled={syncing||chain.length<2}>
+            {syncing?"合成中...":"✦ 合成洞察"}
+          </button>
+          <button style={{...S.btn("transparent","#7a7a9a",false),border:"1px solid #2a2a3a"}} onClick={()=>chain.length>0&&explore(chain.map(c=>c.title).join(" + "))}>
+            ↓ 顺着链路继续深挖
+          </button>
+          <button style={{...S.btn("transparent","#7a7a9a",false),border:"1px solid #2a2a3a"}} onClick={()=>{setChain([]);setSynth("");setSynErr("");}}>
+            清空链路
+          </button>
         </div>
         {syncing&&<div style={S.synth}><div style={S.synthLabel}>合成中</div><Dots/></div>}
         {synErr&&<div style={S.errBox}>{synErr}</div>}
@@ -299,8 +290,9 @@ ${desc}
     </div>
   );
 }
-
+ 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
+ 
